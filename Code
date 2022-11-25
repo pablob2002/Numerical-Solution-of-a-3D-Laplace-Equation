@@ -1,0 +1,151 @@
+if __name__ == '__main__':
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+    from numba import njit
+    import scipy.interpolate
+
+    # Parameters
+    M_x = 101
+    M_y = 151
+    M_z = 301
+    d = 1
+    l_y = 5
+    l_z = 10
+    L_x = 10
+    L_y = 15
+    L_z = 30
+    ds = 0.1
+    x_min = -5
+    x_max = 5
+    y_min = -7.5
+    y_max = 7.5
+    z_min = -15
+    z_max = 15
+    v_1 = 10
+    v_2 = -5
+    r_tol = 10 ** (-2)
+
+    # Potential matrix
+    x_val = np.arange(x_min, x_max + ds, ds)
+    y_val = np.arange(y_min, y_max + ds, ds)
+    z_val = np.arange(z_min, z_max + ds, ds)
+
+    V = np.zeros((M_x, M_y, M_z))
+    V[46, 51:101, 101:201] = v_1
+    V[56, 51:101, 101:201] = v_2
+
+
+    # Implement the algorithm:
+    @njit
+    def relax(V, M_x, M_y, M_z, tol, show_er=False):
+        it = 0
+        er_max = 0
+        er_tr = []
+        while True:
+            it += 1
+            for i in range(1, M_x - 1):
+                for j in range(1, M_y - 1):
+                    for k in range(1, M_z - 1):
+                        if (51 <= j <= 101 and 101 <= k <= 201):
+                            if i == 46:
+                                continue
+                            elif i == 56:
+                                continue
+                        node = V[i, j, k]
+                        mean = (V[i - 1, j, k] + V[i + 1, j, k] + V[i, j - 1, k] + V[i, j + 1, k] + V[i, j, k - 1] + V[
+                            i, j, k + 1]) / 6
+                        V[i, j, k] = mean
+                        er = abs(node - mean)
+                        er_max = er if er > er_max else er_max
+            er_tr.append(er_max)
+
+            if er_max < tol:
+                if show_er == True:
+                    print(er_tr)
+                return V
+
+            er_max = 0
+
+
+    # Exercise 1
+    def V_th(v_1, v_2, x_val, d):
+        V_th = []
+        for x in x_val:
+            if x < -d / 2:
+                V_th.append(v_1)
+            elif x > d / 2:
+                V_th.append(v_2)
+            elif abs(x) <= d / 2:
+                V_th.append(v_2 + (v_1 - v_2) * (d - 2 * x) / (2 * d))
+        return V_th
+
+
+    relax(V, M_x, M_y, M_z, r_tol, True)
+    fig, ax = plt.subplots()
+    plt.ylabel("Potential ($V$)")
+    plt.xlabel("x ($cm$)")
+    ax.plot(x_val, V[:, 76, 151], color='teal', label='Through 0')
+    ax.plot(x_val, V[:, 51, 151], color='gray', label='Through A', linestyle='dashdot')
+    ax.plot(x_val, V[:, 76, 101], color='turquoise', label='Through B', linestyle='dashed', lw=2.1, dashes=(9, 9))
+    ax.plot(x_val + 0.1, V_th(v_1, v_2, x_val, d), color='black', label='Infinite plates')
+    ax.add_patch(Rectangle((-0.43, -7), 1, 20, linewidth=d, facecolor='lightsteelblue',
+                           alpha=0.5))  # Add interplane space. (Blue rectangle)
+    ax.add_patch(Rectangle((-0.43, -7), 1, 20, fill=False, linewidth=0.5, color='navy'))
+    ax.set_ylim(-6, 11)
+    ax.set_xlim(-5, 5)
+    plt.legend()
+    plt.title('Exercise 1')
+    plt.show()
+
+    # Exercise 2
+    pot_dif = []
+    for i in range(M_y):
+        pot_dif.append(abs(V[51, i, 150]/2.5 - 1) * 100)
+    # Plotting.
+    fig, ax = plt.subplots()
+    ax2 = ax.twinx()
+    ax2.set_xlim(y_min, y_max)
+    ax.set_xlabel('$y$ (cm)')
+
+    ax.set_ylabel('V(0,y,0) - $V_{infinite}$(x=0) [V]', color='teal')
+    ax.plot(y_val, V[51, :, 151] - 2.5, color='teal')
+    ax.set_ylim(-3, 0.03)
+
+    ax2.set_ylabel('(V(0,y,0) / $V_{infinite}$(x=0) - 1) $x$ 100', color='turquoise')
+
+    ax2.set_ylim(-0.5, 100.9)
+    ax2.plot(y_val, pot_dif, color='turquoise')
+    ax2.axhline(10, color='turquoise', linestyle='--')
+    ax2.text(3, 12, '10%', color='turquoise')
+
+    ax.add_patch(Rectangle((-2.5, -3), 5, 100, linewidth=1, facecolor='lightgrey', alpha=0.5))
+    ax.add_patch(Rectangle((-2.5, -3), 5, 100, fill=False, linewidth=1, color='grey'))
+
+    plt.title('Exercise 2.')
+    plt.show()
+    y_int = scipy.interpolate.interp1d(y_val, pot_dif)
+    print(*[f'The difference is larger than {round(float(y_int(y)), 1)} % to the right of y= {y} ' for y in
+            np.arange(2.0190, 2.0191, 0.0001)])
+    print(*[f'The difference is larger than {round(float(y_int(y)), 1)} % to the left of y={y}' for y in
+            np.arange(-2.1350, -2.13499, 0.0001)])
+    print('Percentage difference at the left edge of the finite capacitor (y=-2.5) is', round(float(y_int(-2.5)), 2),
+          '%')
+
+    # Exercise 3
+
+    fig, ax = plt.subplots()
+    contour = ax.contour(x_val, y_val, V[:, :, 151].T, levels=12, cmap='rainbow')
+
+
+
+
+    ax.set_ylim(-4, 4.1)
+    ax.set_ylabel('$y$ [cm]')
+    ax.set_xlim(-3, 3)
+    ax.set_xlabel('$x$ [cm]')
+    ax.clabel(contour, inline=True, fontsize=7)
+    ax.add_patch(plt.Rectangle((-0.44, -2.35), 0.04, 5, color='blue'))
+    ax.add_patch(plt.Rectangle((0.59, -2.35), 0.03, 4.99, color='red'))
+    plt.title('Exercise 3')
+    plt.show()
